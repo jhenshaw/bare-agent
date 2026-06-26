@@ -3,8 +3,7 @@
 <img src="./assets/bare-agent.png" width="300" alt="Bare Agent">
 
 A tiny, themeable, single-pane web UI for chatting with a **Matrix-connected AI
-agent** (or any Matrix user). No multi-room IM app, no clutter — just you and
-your agent, styled how you like.
+agent** (or any Matrix user). No multi-room IM app, no sub-agents, no Kanban, no threads, no clutter — just you and your agent, styled how you like.
 
 It's a static site: a little HTML/CSS/JS that talks directly to a Matrix
 homeserver via [`matrix-js-sdk`](https://github.com/matrix-org/matrix-js-sdk).

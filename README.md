@@ -1,6 +1,6 @@
 # Bare Agent
 
-![bare-agent](/assets/bare-agent.png)
+<img src="./assets/bare-agent.png" width="300" alt="Bare Agent">
 
 A tiny, themeable, single-pane web UI for chatting with a **Matrix-connected AI
 agent** (or any Matrix user). No multi-room IM app, no clutter — just you and
@@ -11,7 +11,7 @@ homeserver via [`matrix-js-sdk`](https://github.com/matrix-org/matrix-js-sdk).
 Deploy it anywhere that serves static files (Cloudflare Pages, Netlify, GitHub
 Pages, your own web server, …).
 
-![bare-agent](/assets/login.png)
+![bare-agent](./assets/login.png)
 
 ## Agent-agnostic
 
@@ -38,14 +38,15 @@ is that your agent replies in **unencrypted** rooms (see Security).
 - One-line theming via a single `--accent` color
 - No build-time secrets — you log in at runtime
 
-![bare-agent](/assets/agent-chat.png)
+![bare-agent](./assets/agent-chat.png)
 
 ## Prerequisites
 
-- **Node 18+** (for the dev server / build)
-- A **Matrix account** to log in as
 - A **Matrix-connected agent to chat with** (e.g. a Hermes or OpenClaw bot) that
   replies in **unencrypted** rooms — you'll enter its Matrix ID at login
+- A **Matrix account** to log in as
+- A place to host a single, static web page (for simiplicity)
+
 
 ## Quick start
 

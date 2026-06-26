@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bare Agent</title>
+
+<style>
+  /* =====================================================================
+     THEME — recolor the whole app from --accent below.
+     (chat layout + the rendered-markdown styling are both here.)
+     ===================================================================== */
+  :root{
+    --ink:#444; --muted:#888; --line:#d9d9d9;
+    --bg:#fff; --bg2:#F3F5F7;
+    --accent:#DD4C4F;   /* ← the single accent color — theme the whole app from here */
+    --font:"Avenir Next","Avenir",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--font);
+    font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility; display:flex; justify-content:center;
+  }
+  #app{ width:100%; max-width:720px; height:100dvh; display:flex; flex-direction:column; }
+
+  header{ padding:16px 22px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:12px; }
+  header .dot{ width:34px; height:34px; border-radius:50%; background:#e9e9eb;
+    display:grid; place-items:center; font-size:16px; font-weight:600;
+    background-size:cover; background-position:center; background-repeat:no-repeat; }
+  header h1{ font-size:18px; margin:0; font-weight:600; line-height:1.15; }
+  header small{ color:var(--muted); display:block; line-height:1.1; }
+
+  #log{ flex:1; overflow-y:auto; padding:22px; display:flex; flex-direction:column; gap:14px;
+    scrollbar-gutter:stable; }   /* always reserve the 12px gutter so layout never shifts */
+  /* lighter, outline-only scrollbar */
+  #log::-webkit-scrollbar{ width:12px; }
+  #log::-webkit-scrollbar-track{ background:transparent; }
+  #log::-webkit-scrollbar-thumb{ background:transparent; border:1.5px solid #a8a8a8;
+    border-radius:8px; background-clip:padding-box; }
+  #log::-webkit-scrollbar-thumb:hover{ border-color:#7e7e7e; }
+  .msg{ max-width:82%; padding:10px 14px; border-radius:var(--radius); }
+  .msg.me{ align-self:flex-end; background:var(--bg2); border-bottom-right-radius:5px; }
+  .msg.bot{ align-self:flex-start; background:#fff; border:1px solid var(--line);
+    border-bottom-left-radius:5px; }
+  .msg .who{ font-size:12.5px; color:var(--accent); font-weight:600; margin-bottom:4px; }
+  .msg .time{ font-size:11px; color:var(--muted); margin-top:5px; text-align:right; }
+
+  /* the bot's formatted body renders through .document-wrapper, tamed for a chat bubble */
+  .msg-doc{ max-width:none!important; width:auto!important; min-height:0!important;
+    margin:0!important; padding:0!important; font-size:15px; }
+  .msg-doc p{ margin-bottom:.55em!important; }
+  .msg-doc > :first-child{ margin-top:0!important; padding-block-start:0!important; }
+  .msg-doc > :last-child, .msg-doc p:last-child{ margin-bottom:0!important; }
+
+  /* 22px left matches the message column; right is 22 − 12px scrollbar so Send
+     lines up with the conversation's right margin above it */
+  footer{ padding:14px 10px 14px 22px; border-top:1px solid var(--line); }
+  #composer{ display:flex; gap:10px; align-items:flex-end; }
+  .inwrap{ position:relative; flex:1; display:flex; }
+  #input{ flex:1; resize:none; border:1px solid var(--line); border-radius:12px;
+    padding:10px 44px 10px 14px; font:inherit; background:#fff; color:inherit;
+    min-height:64px; max-height:160px; overflow-y:hidden; }
+  #input:focus{ outline:2px solid var(--accent); outline-offset:-1px; }
+  #send{ border:0; background:var(--accent); color:#fff; border-radius:12px; padding:0 18px;
+    align-self:stretch; font:inherit; font-weight:600; cursor:pointer; }
+  #send:disabled{ opacity:.5; cursor:default; }
+  /* mic lives inside the message box (bottom-right), so it doesn't steal width */
+  #mic{ position:absolute; right:8px; bottom:8px; width:30px; height:30px; border:0;
+    background:transparent; border-radius:8px; font-size:17px; line-height:1; cursor:pointer; opacity:.6; }
+  #mic:hover{ opacity:1; background:var(--bg2); }
+  #mic:disabled{ opacity:.3; cursor:default; }
+
+  /* recording bar (replaces the composer while recording / reviewing) */
+  #recbar{ display:flex; align-items:center; gap:12px; min-height:64px; }
+  #recbar .grow{ flex:1; }
+  #recbar .recdot{ width:10px; height:10px; border-radius:50%; background:var(--accent);
+    animation:recpulse 1s ease-in-out infinite; }
+  @keyframes recpulse{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
+  #rectime{ color:var(--muted); font-variant-numeric:tabular-nums; }
+  #reccancel{ border:0; background:transparent; color:var(--muted); font-size:18px; cursor:pointer; }
+  #recstop, #recsend{ border:0; background:var(--accent); color:#fff; border-radius:12px;
+    padding:0 16px; height:42px; font:inherit; font-weight:600; cursor:pointer; }
+  #recplay{ flex:none; width:32px; height:32px; border-radius:50%; border:0;
+    background:var(--accent); color:#fff; font-size:13px; cursor:pointer; }
+
+  /* voice-note bubble */
+  .voice{ display:flex; align-items:center; gap:10px; min-width:190px; }
+  .vplay{ flex:none; width:32px; height:32px; border-radius:50%; border:0; background:var(--accent);
+    color:#fff; font-size:13px; cursor:pointer; display:grid; place-items:center; }
+  .vwave{ flex:1; display:flex; align-items:center; gap:2px; height:24px; }
+  .vwave span{ flex:1; min-width:2px; border-radius:1px; background:#c9c9cc; }
+  .msg.me .vwave span{ background:#c1c6cb; }
+  .vwave span.on{ background:var(--accent); }
+  .vdur{ flex:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+  #login{ margin:auto; width:320px; padding:28px; border:1px solid var(--line); border-radius:18px; }
+  #login h2{ margin:0 0 4px; font-weight:600; } #login p{ color:var(--muted); margin:0 0 18px; }
+  #login input{ width:100%; padding:11px 13px; margin-bottom:10px; border:1px solid var(--line);
+    border-radius:11px; font:inherit; }
+  #login button{ width:100%; border:0; background:var(--accent); color:#fff; border-radius:11px;
+    padding:11px; font:inherit; font-weight:600; cursor:pointer; }
+  .err{ color:var(--accent); font-size:14px; min-height:18px; margin-top:6px; }
+  .hidden{ display:none!important; }
+
+  /* =====================================================================
+     RENDERED MESSAGE CONTENT (the bot's markdown/HTML).
+     Each bot message body is wrapped in .document-wrapper.
+     ===================================================================== */
+  .document-wrapper {
+    color: var(--ink, #444);
+    line-height: 1.6;
+    word-wrap: break-word;
+  }
+  .document-wrapper h1,
+  .document-wrapper h2,
+  .document-wrapper h3,
+  .document-wrapper h4,
+  .document-wrapper h5,
+  .document-wrapper h6 {
+    font-weight: 600;
+    line-height: 1.25;
+    margin: 1em 0 0.4em;
+  }
+  .document-wrapper h1 { font-size: 1.5em; }
+  .document-wrapper h2 { font-size: 1.3em; }
+  .document-wrapper h3 { font-size: 1.15em; }
+  .document-wrapper h4,
+  .document-wrapper h5,
+  .document-wrapper h6 { font-size: 1em; }
+
+  .document-wrapper p { margin: 0 0 0.8em; }
+  .document-wrapper strong { font-weight: 600; }
+  .document-wrapper em { font-style: italic; }
+  .document-wrapper del { text-decoration: line-through; color: var(--muted, #888); }
+  .document-wrapper a { color: var(--accent, #DD4C4F); text-decoration: none; }
+  .document-wrapper a:hover { text-decoration: underline; }
+
+  .document-wrapper ul,
+  .document-wrapper ol { margin: 0 0 0.8em; padding-left: 1.5em; }
+  .document-wrapper ul { list-style: disc; }
+  .document-wrapper ol { list-style: decimal; }
+  .document-wrapper li { margin: 0.15em 0; }
+  .document-wrapper li::marker { color: var(--accent, #DD4C4F); }
+
+  .document-wrapper blockquote {
+    margin: 0 0 0.8em;
+    padding: 0.1em 0 0.1em 1em;
+    border-left: 2px solid var(--accent, #DD4C4F);
+    color: var(--muted, #666);
+  }
+
+  .document-wrapper code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: var(--bg2, #f3f5f7);
+    border: 1px solid var(--line, #e3e3e3);
+    border-radius: 5px;
+    padding: 0.1em 0.35em;
+  }
+  .document-wrapper pre {
+    margin: 0 0 0.8em;
+    padding: 0.75em 0.9em;
+    background: var(--bg2, #f3f5f7);
+    border: 1px solid var(--line, #e3e3e3);
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+  .document-wrapper pre code { background: none; border: 0; padding: 0; font-size: 0.88em; }
+
+  .document-wrapper hr {
+    border: 0;
+    border-top: 1px solid var(--line, #e3e3e3);
+    margin: 1.2em 0;
+  }
+  .document-wrapper table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0 0 0.8em;
+    font-size: 0.95em;
+  }
+  .document-wrapper th,
+  .document-wrapper td {
+    border: 1px solid var(--line, #e3e3e3);
+    padding: 0.4em 0.6em;
+    text-align: left;
+  }
+  .document-wrapper th { background: var(--bg2, #f3f5f7); font-weight: 600; }
+  .document-wrapper img { max-width: 100%; border-radius: 6px; }
+  .document-wrapper > :first-child { margin-top: 0; }
+  .document-wrapper > :last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- LOGIN -->
+  <div id="login">
+    <h2>Sign in</h2>
+    <p>Connect to your Matrix account</p>
+    <input id="hs" placeholder="https://matrix.org" autocomplete="off" spellcheck="false" />
+    <input id="bot" placeholder="agent (@bot:server)" autocomplete="off" spellcheck="false" />
+    <input id="user" placeholder="name" autocomplete="username" />
+    <input id="pass" type="password" placeholder="password" autocomplete="current-password" />
+    <button id="loginBtn">Sign in</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+
+  <!-- CHAT -->
+  <div id="chat" class="hidden" style="display:flex;flex-direction:column;height:100%">
+    <header>
+      <div class="dot" id="avatar"></div>
+      <div><h1 id="appName"></h1><small id="status">connecting…</small></div>
+    </header>
+    <div id="log"></div>
+    <footer>
+      <form id="composer">
+        <div class="inwrap">
+          <textarea id="input" rows="2" placeholder="Message…" autocomplete="off"></textarea>
+          <button id="mic" type="button" title="Record voice note" disabled>🎤</button>
+        </div>
+        <button id="send" type="submit" disabled>Send</button>
+      </form>
+      <div id="recbar" class="hidden">
+        <button id="reccancel" type="button" title="Discard">✕</button>
+        <span class="recdot" id="recdot"></span>
+        <button id="recplay" type="button" class="hidden" title="Preview">▶</button>
+        <span id="rectime">0:00</span>
+        <span class="grow"></span>
+        <button id="recstop" type="button" title="Stop recording">■ Stop</button>
+        <button id="recsend" type="button" class="hidden">Send</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script type="module">
+// Dependencies load straight from a CDN as ES modules — no build step, no node_modules.
+// ?bundle inlines matrix-js-sdk's sub-deps into one module — without it, esm.sh
+// serves them separately and a cross-module export (M_POLL_START) fails to resolve.
+import { createClient, AutoDiscovery } from "https://esm.sh/matrix-js-sdk@41.8.0?bundle";
+import DOMPurify from "https://esm.sh/dompurify@3.4.11";
+
+// ============================================================================
+//  CONFIG — edit these to make it yours. These just PREFILL the login form;
+//  you can still change them on the sign-in screen at runtime.
+// ============================================================================
+const DEFAULT_HOMESERVER = "https://matrix.org";   // prefilled homeserver (e.g. "https://chat.example.org")
+const BOT_USER           = "";                     // your agent's Matrix ID, e.g. "@bot:example.org"
+const DEFAULT_USER       = "";                     // your Matrix username (prefills the name field)
+const APP_NAME           = "Assistant";            // room name + page title (header shows the bot's own name)
+//  Tip: theme the whole UI by changing --accent in the <style> block above.
+//  NOTE: don't hardcode your password here — type it on the sign-in screen.
+//        Anything in this file is plain text to anyone who can open it.
+// ============================================================================
+
+const KEY = { tok:"cc.token", uid:"cc.uid", dev:"cc.dev", room:"cc.room", hs:"cc.hs", bot:"cc.bot" };
+
+// ---------- elements ----------
+const $ = (id) => document.getElementById(id);
+const log = $("log"), input = $("input"), sendBtn = $("send"), status = $("status");
+let client, roomId, seen = new Set();
+let botUser = localStorage.getItem(KEY.bot) || BOT_USER;
+
+// prefill login fields
+$("hs").value   = localStorage.getItem(KEY.hs) || DEFAULT_HOMESERVER;
+$("bot").value  = botUser;
+$("user").value = DEFAULT_USER;
+document.title  = APP_NAME;
+
+// Resolve a homeserver the way Element does: try .well-known delegation
+// (e.g. "example.org" -> "https://chat.example.org"), else use it directly.
+async function resolveHomeserver(value){
+  const name = value.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  if (!name) return DEFAULT_HOMESERVER;
+  try {
+    const disc = await AutoDiscovery.findClientConfig(name);
+    const hs = disc?.["m.homeserver"];
+    if (hs?.base_url && hs.state === "SUCCESS") return hs.base_url.replace(/\/+$/, "");
+  } catch { /* fall through to direct use */ }
+  return /^https?:\/\//.test(value.trim()) ? value.trim().replace(/\/+$/, "") : "https://" + name;
+}
+
+// ---------- login ----------
+$("loginBtn").onclick = async () => {
+  const hsInput = $("hs").value.trim() || DEFAULT_HOMESERVER;
+  const bot = $("bot").value.trim();
+  const u = $("user").value.trim(), p = $("pass").value;
+  $("loginErr").textContent = "";
+  if (!bot) { $("loginErr").textContent = "Enter the agent's Matrix ID (e.g. @bot:server)"; return; }
+  if (!u || !p) return;
+  try {
+    const hs = await resolveHomeserver(hsInput);   // .well-known discovery like Element
+    const tmp = createClient({ baseUrl: hs });
+    const res = await tmp.login("m.login.password", {
+      identifier: { type: "m.id.user", user: u },
+      password: p,
+      initial_device_display_name: APP_NAME + " Web",
+    });
+    botUser = bot;
+    localStorage.setItem(KEY.hs, hs);
+    localStorage.setItem(KEY.bot, bot);
+    localStorage.setItem(KEY.tok, res.access_token);
+    localStorage.setItem(KEY.uid, res.user_id);
+    localStorage.setItem(KEY.dev, res.device_id);
+    start();
+  } catch (e) {
+    $("loginErr").textContent = (e?.data?.error) || e.message || "Login failed";
+  }
+};
+
+if (localStorage.getItem(KEY.tok)) start();   // auto-resume
+
+// ---------- start ----------
+async function start() {
+  $("login").classList.add("hidden");
+  $("chat").classList.remove("hidden");
+
+  client = createClient({
+    baseUrl: localStorage.getItem(KEY.hs) || DEFAULT_HOMESERVER,
+    accessToken: localStorage.getItem(KEY.tok),
+    userId: localStorage.getItem(KEY.uid),
+    deviceId: localStorage.getItem(KEY.dev),
+    // no crypto — unencrypted on purpose
+  });
+
+  client.on("Room.timeline", (event, room, toStart, removed, data) => {
+    if (room?.roomId === roomId && !toStart && data?.liveEvent) render(event);
+  });
+
+  await client.startClient({ initialSyncLimit: 50 });
+
+  client.once("sync", async (state) => {
+    if (state !== "PREPARED") { status.textContent = "sync error"; return; }
+    roomId = await findOrCreateRoom();
+    // header reflects the bot's own Matrix profile — no hardcoded branding
+    const botName = client.getRoom(roomId)?.getMember(botUser)?.name
+                 || botUser.replace(/^@/, "").split(":")[0];
+    $("appName").textContent = botName;
+    setAgentAvatar(botName);   // the agent's Matrix avatar if it has one, else the initial
+    document.title = botName;
+    status.textContent = "online";
+    sendBtn.disabled = false;
+    if (voiceSupported) $("mic").disabled = false;
+    (client.getRoom(roomId)?.timeline || []).forEach(render);
+    log.scrollTop = log.scrollHeight;
+  });
+}
+
+// ---------- agent avatar ----------
+// Show the agent's Matrix avatar in the header dot, falling back to its initial.
+async function setAgentAvatar(botName){
+  const dot = $("avatar");
+  const letter = () => { dot.style.backgroundImage = ""; dot.textContent = (botName[0] || "•").toUpperCase(); };
+  const mxc = client.getRoom(roomId)?.getMember(botUser)?.getMxcAvatarUrl?.();
+  if (!mxc) return letter();
+  const show = (url) => { dot.textContent = ""; dot.style.backgroundImage = `url("${url}")`; };
+  // 68 = 34px dot at 2× for retina; "crop" to fill the circle
+  try {
+    // Matrix 1.11+ authenticated media: fetch with the token, render via a blob URL
+    const authUrl = client.mxcUrlToHttp(mxc, 68, 68, "crop", false, true, true);
+    if (authUrl) {
+      const r = await fetch(authUrl, { headers: { Authorization: "Bearer " + client.getAccessToken() } });
+      if (r.ok) return show(URL.createObjectURL(await r.blob()));
+    }
+  } catch { /* fall through to legacy / letter */ }
+  // legacy unauthenticated media: usable directly as an image URL
+  const legacy = client.mxcUrlToHttp(mxc, 68, 68, "crop");
+  if (legacy) { const img = new Image(); img.onload = () => show(legacy); img.onerror = letter; img.src = legacy; }
+  else letter();
+}
+
+// ---------- room ----------
+function roomEncrypted(room){
+  try { return !!room.currentState.getStateEvents("m.room.encryption", ""); }
+  catch { return false; }
+}
+
+async function findOrCreateRoom() {
+  // 1) reuse the saved room if we're still a member and the agent is in it
+  const saved = localStorage.getItem(KEY.room);
+  if (saved) {
+    const r = client.getRoom(saved);
+    if (r && r.getMyMembership() === "join" && r.getMember(botUser)) return saved;
+  }
+  // 2) else find the existing UNENCRYPTED room we already share with the agent
+  const mine = client.getRooms().filter(r =>
+    r.getMyMembership() === "join" && r.getMember(botUser) && !roomEncrypted(r)
+  );
+  if (mine.length) {
+    const msgs = (r) => r.timeline.filter(e => e.getType() === "m.room.message").length;
+    mine.sort((a, b) => msgs(b) - msgs(a) || b.getLastActiveTimestamp() - a.getLastActiveTimestamp());
+    const id = mine[0].roomId;            // the real conversation (most messages)
+    localStorage.setItem(KEY.room, id);
+    return id;
+  }
+  // 3) nothing found → create one (unencrypted) and invite the agent
+  const { room_id } = await client.createRoom({
+    name: APP_NAME, preset: "private_chat", invite: [botUser],
+  });
+  localStorage.setItem(KEY.room, room_id);
+  return room_id;
+}
+
+// ---------- render ----------
+function buildMsg(event) {            // build a message element (deduped), or null
+  if (event.getType() !== "m.room.message") return null;
+  const id = event.getId(); if (seen.has(id)) return null; seen.add(id);
+
+  const c = event.getContent();
+  const mine = event.getSender() === client.getUserId();
+  const name = client.getRoom(roomId)?.getMember(event.getSender())?.name || event.getSender();
+  const who  = mine ? "" : `<div class="who">${escapeHtml(name)}</div>`;
+  const time = `<div class="time">${new Date(event.getTs()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>`;
+
+  if (c.msgtype === "m.audio") return buildVoiceMsg(c, mine, who, time);
+
+  const isHtml = c.format === "org.matrix.custom.html" && c.formatted_body;
+  const el = document.createElement("div");
+  el.className = "msg " + (mine ? "me" : "bot");
+  const bodyHtml = isHtml ? DOMPurify.sanitize(c.formatted_body) : escapeHtml(c.body || "");
+  const docClass = isHtml ? " document-wrapper msg-doc" : "";   // bot HTML rendered via the theme
+  el.innerHTML = who + `<div class="body${docClass}">${bodyHtml}</div>` + time;
+  return el;
+}
+
+// Render an m.audio voice note: waveform + play button. Audio is fetched
+// (authenticated) lazily on first play, like the avatar.
+function buildVoiceMsg(c, mine, who, time){
+  const el = document.createElement("div");
+  el.className = "msg " + (mine ? "me" : "bot");
+  const audioInfo = c["org.matrix.msc1767.audio"] || {};
+  const dur = audioInfo.duration ?? c.info?.duration ?? 0;
+  let wf = audioInfo.waveform;
+  if (!Array.isArray(wf) || !wf.length)             // no waveform → a flat placeholder
+    wf = Array.from({ length: 40 }, () => 420);
+  const bars = wf.slice(0, 64)
+    .map(v => Math.max(2, Math.round((Math.min(1024, Math.max(0, v)) / 1024) * 22)));
+
+  el.innerHTML = who +
+    `<div class="voice">
+       <button class="vplay" aria-label="Play voice note">▶</button>
+       <div class="vwave">${bars.map(h => `<span style="height:${h}px"></span>`).join("")}</div>
+       <span class="vdur">${fmtDur(dur)}</span>
+     </div>` + time;
+
+  const mxc = c.url;
+  const playBtn = el.querySelector(".vplay");
+  const barEls  = [...el.querySelectorAll(".vwave span")];
+  let audio = null, playing = false;
+
+  async function ensureAudio(){
+    if (audio) return audio;
+    // authenticated download URL first, fall back to legacy
+    let src = client.mxcUrlToHttp(mxc, undefined, undefined, undefined, false, true, true)
+           || client.mxcUrlToHttp(mxc);
+    try {
+      const r = await fetch(src, { headers: { Authorization: "Bearer " + client.getAccessToken() } });
+      if (r.ok) src = URL.createObjectURL(await r.blob());
+    } catch { /* try src directly */ }
+    audio = new Audio(src);
+    audio.ontimeupdate = () => {
+      const p = audio.duration ? audio.currentTime / audio.duration : 0;
+      const k = Math.floor(p * barEls.length);
+      barEls.forEach((b, i) => b.classList.toggle("on", i < k));
+    };
+    audio.onended = () => { playing = false; playBtn.textContent = "▶"; barEls.forEach(b => b.classList.remove("on")); };
+    return audio;
+  }
+  playBtn.onclick = async () => {
+    const a = await ensureAudio();
+    if (playing) { a.pause(); playing = false; playBtn.textContent = "▶"; }
+    else { try { await a.play(); playing = true; playBtn.textContent = "⏸"; } catch {} }
+  };
+  return el;
+}
+
+function fmtDur(ms){ const s = Math.round((ms || 0) / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+
+function render(event){               // append a new/live message to the bottom
+  const el = buildMsg(event);
+  if (el) { log.appendChild(el); log.scrollTop = log.scrollHeight; }
+}
+
+// ---------- back-pagination (scroll up to load older) ----------
+let paginating = false, noMore = false;
+async function loadOlder(){
+  const room = client.getRoom(roomId);
+  if (!room || paginating || noMore) return;
+  paginating = true;
+  const before = log.scrollHeight;
+  const lenBefore = room.timeline.length;
+  try { await client.scrollback(room, 30); }
+  catch { paginating = false; return; }
+  if (room.timeline.length === lenBefore) noMore = true;      // reached the start
+  const frag = document.createDocumentFragment();
+  for (const ev of room.timeline) { const el = buildMsg(ev); if (el) frag.appendChild(el); }
+  if (frag.childNodes.length) {
+    log.insertBefore(frag, log.firstChild);
+    log.scrollTop = log.scrollHeight - before;                // keep the view anchored
+  }
+  paginating = false;
+}
+log.addEventListener("scroll", () => { if (log.scrollTop < 80) loadOlder(); });
+
+function escapeHtml(s){return s.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+// ---------- send ----------
+$("composer").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = input.value.trim(); if (!text) return;
+  input.value = ""; auto();
+  await client.sendTextMessage(roomId, text);
+};
+input.addEventListener("input", auto);
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); }
+});
+function auto(){ input.style.height="auto"; input.style.height=Math.min(Math.max(input.scrollHeight,64),160)+"px"; }
+
+// ---------- voice notes (record → review → send) ----------
+const voiceSupported = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+let mediaRecorder = null, recChunks = [], recStartTs = 0, recInterval = null, recStream = null;
+let recBlob = null, recElapsed = 0, preview = null, previewPlaying = false;
+
+if (!voiceSupported) $("mic").style.display = "none";
+$("mic").onclick       = startRecording;
+$("recstop").onclick   = stopRecording;     // ■ end recording, go to review
+$("recplay").onclick   = previewToggle;     // ▶ preview the clip
+$("recsend").onclick   = sendRecording;     // Send the reviewed clip
+$("reccancel").onclick = discardRecording;  // ✕ discard (either phase)
+
+function recPickMime(){
+  for (const m of ["audio/ogg;codecs=opus","audio/webm;codecs=opus","audio/webm","audio/mp4"])
+    if (MediaRecorder.isTypeSupported(m)) return m;
+  return "";
+}
+function fmtClock(ms){ const s = Math.round((ms || 0) / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+
+// "off" = composer; "recording" = live + Stop; "review" = preview + Send
+function recPhase(p){
+  if (p === "off"){ $("recbar").classList.add("hidden"); $("composer").classList.remove("hidden"); return; }
+  $("composer").classList.add("hidden"); $("recbar").classList.remove("hidden");
+  const live = p === "recording";
+  $("recdot").classList.toggle("hidden", !live);
+  $("recstop").classList.toggle("hidden", !live);
+  $("recplay").classList.toggle("hidden", live);
+  $("recsend").classList.toggle("hidden", live);
+}
+
+async function startRecording(){
+  try { recStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { status.textContent = "mic blocked"; return; }
+  const mime = recPickMime();
+  mediaRecorder = new MediaRecorder(recStream, mime ? { mimeType: mime } : undefined);
+  recChunks = [];
+  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+  mediaRecorder.start();
+  recStartTs = Date.now();
+  recPhase("recording");
+  $("rectime").textContent = "0:00";
+  recInterval = setInterval(() => { $("rectime").textContent = fmtClock(Date.now() - recStartTs); }, 250);
+}
+
+// stop recording but keep the clip for review/preview — does NOT send
+function stopRecording(){
+  if (!mediaRecorder) return;
+  const mr = mediaRecorder; mediaRecorder = null;
+  recElapsed = Date.now() - recStartTs;
+  clearInterval(recInterval); recInterval = null;
+  mr.onstop = () => {
+    recStream?.getTracks().forEach(t => t.stop()); recStream = null;
+    recBlob = new Blob(recChunks, { type: mr.mimeType || "audio/webm" });
+    $("rectime").textContent = fmtClock(recElapsed);
+    recPhase("review");
+  };
+  mr.stop();
+}
+
+function previewToggle(){
+  if (!recBlob) return;
+  if (!preview){
+    preview = new Audio(URL.createObjectURL(recBlob));
+    preview.onended = () => { previewPlaying = false; $("recplay").textContent = "▶"; };
+  }
+  if (previewPlaying){ preview.pause(); previewPlaying = false; $("recplay").textContent = "▶"; }
+  else { preview.play().then(() => { previewPlaying = true; $("recplay").textContent = "⏸"; }).catch(() => {}); }
+}
+
+function clearPreview(){ if (preview){ preview.pause(); preview = null; } previewPlaying = false; $("recplay").textContent = "▶"; }
+
+// ✕ — discard from either phase
+function discardRecording(){
+  if (mediaRecorder){
+    const mr = mediaRecorder; mediaRecorder = null;
+    clearInterval(recInterval); recInterval = null;
+    mr.onstop = () => { recStream?.getTracks().forEach(t => t.stop()); recStream = null; };
+    mr.stop();
+  }
+  clearPreview(); recBlob = null; recPhase("off");
+}
+
+async function sendRecording(){
+  const blob = recBlob, elapsed = recElapsed;
+  clearPreview(); recBlob = null; recPhase("off");
+  if (blob && blob.size) await sendVoice(blob, elapsed);
+}
+
+// decode → duration + a downsampled 0–1024 waveform (falls back to the recorded elapsed time)
+async function analyzeAudio(blob, elapsedMs){
+  let duration = Math.max(1000, elapsedMs | 0), waveform = [];
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+    duration = Math.round(audio.duration * 1000);
+    const data = audio.getChannelData(0), bars = 40, block = Math.floor(data.length / bars) || 1;
+    let peak = 0; const raw = [];
+    for (let i = 0; i < bars; i++){
+      let sum = 0; for (let j = 0; j < block; j++) sum += Math.abs(data[i * block + j] || 0);
+      const amp = sum / block; raw.push(amp); if (amp > peak) peak = amp;
+    }
+    waveform = raw.map(a => Math.round((peak ? a / peak : 0) * 1024));
+    ctx.close();
+  } catch { /* keep elapsed-based duration, empty waveform */ }
+  return { duration, waveform };
+}
+
+async function sendVoice(blob, elapsedMs){
+  try {
+    status.textContent = "sending voice…";
+    const { duration, waveform } = await analyzeAudio(blob, elapsedMs);
+    const mime = blob.type || "audio/webm";
+    const ext  = mime.includes("ogg") ? "ogg" : mime.includes("mp4") ? "m4a"
+               : mime.includes("webm") ? "webm" : "bin";
+    const up   = await client.uploadContent(blob, { type: mime, name: "Voice message." + ext });
+    const url  = up.content_uri || up.url || up;
+    await client.sendMessage(roomId, {
+      msgtype: "m.audio",
+      body: "Voice message." + ext,
+      url,
+      info: { duration, mimetype: mime, size: blob.size },
+      "org.matrix.msc1767.audio": { duration, waveform },   // duration + waveform (Element)
+      "org.matrix.msc3245.voice": {},                       // marks it a voice note, not a file
+    });
+    status.textContent = "online";
+  } catch (e) {
+    console.error(e); status.textContent = "voice failed";
+  }
+}
+</script>
+</body>
+</html>

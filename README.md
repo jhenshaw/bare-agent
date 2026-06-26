@@ -5,9 +5,9 @@
 A tiny, themeable, single-pane web UI for chatting with a **Matrix-connected AI
 agent** (or any Matrix user). No multi-room IM app, no sub-agents, no Kanban, no threads, no clutter — just you and your agent, styled how you like.
 
-Inspired by the simple, clean elegance of [Bear Writer](https://bear.app/), the Apple design award-winning markdown editor which provides one of the most elegant and focused application experiences. 
+Inspired by the simple, clean elegance of [Bear Writer](https://bear.app/), the Apple design award-winning markdown editor, Bare Agent brings the same de-cluttered focus to your conversations with a personal AI agent.
 
-Bare Agent offers a static site: a little HTML/CSS/JS that talks directly to a Matrix
+It's a static site: a little HTML/CSS/JS that talks directly to a Matrix
 homeserver via [`matrix-js-sdk`](https://github.com/matrix-org/matrix-js-sdk).
 Deploy it anywhere that serves static files (Cloudflare Pages, Netlify, GitHub
 Pages, your own web server, …).

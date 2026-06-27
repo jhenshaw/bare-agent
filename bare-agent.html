@@ -357,17 +357,19 @@ async function setAgentAvatar(botName){
   const mxc = client.getRoom(roomId)?.getMember(botUser)?.getMxcAvatarUrl?.();
   if (!mxc) return letter();
   const show = (url) => { dot.textContent = ""; dot.style.backgroundImage = `url("${url}")`; };
-  // 68 = 34px dot at 2× for retina; "crop" to fill the circle
+  // Fetch the ORIGINAL upload, not a server thumbnail: the homeserver's
+  // thumbnailer flattens PNG transparency onto a black background. CSS
+  // (background-size:cover on .dot) handles sizing/cropping instead.
   try {
     // Matrix 1.11+ authenticated media: fetch with the token, render via a blob URL
-    const authUrl = client.mxcUrlToHttp(mxc, 68, 68, "crop", false, true, true);
+    const authUrl = client.mxcUrlToHttp(mxc, undefined, undefined, undefined, false, true, true);
     if (authUrl) {
       const r = await fetch(authUrl, { headers: { Authorization: "Bearer " + client.getAccessToken() } });
       if (r.ok) return show(URL.createObjectURL(await r.blob()));
     }
   } catch { /* fall through to legacy / letter */ }
   // legacy unauthenticated media: usable directly as an image URL
-  const legacy = client.mxcUrlToHttp(mxc, 68, 68, "crop");
+  const legacy = client.mxcUrlToHttp(mxc);
   if (legacy) { const img = new Image(); img.onload = () => show(legacy); img.onerror = letter; img.src = legacy; }
   else letter();
 }
